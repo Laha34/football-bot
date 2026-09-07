@@ -1,77 +1,42 @@
-import asyncio
-import logging
+"""
+Локальний запуск бота для тестування на своєму комп'ютері (python bot.py).
+Використовує long-polling (Telegram getUpdates) - не потребує webhook/сервера.
 
-from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+Для постійної роботи 24/7 використовуй app.py на PythonAnywhere (див. README.md).
+"""
+import time
 
 import config
 import db
-import football_api
-from reminders import check_and_send_reminders, _format_match
+import handlers
+import reminders
+import telegram_api
 
-logging.basicConfig(level=logging.INFO)
-
-bot = Bot(token=config.BOT_TOKEN)
-dp = Dispatcher()
-
-MATCHES_BUTTON_TEXT = "📅 Матчі"
-
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text=MATCHES_BUTTON_TEXT)]],
-    resize_keyboard=True,  # кнопка не займає весь екран
-)
+REMINDER_CHECK_INTERVAL_SECONDS = 300  # 5 хвилин
 
 
-@dp.message(Command("start"))
-async def cmd_start(message: Message):
-    await message.answer(
-        "Привіт! Я стежу за матчами твоїх команд і нагадую:\n"
-        "☀️ вранці в день матчу\n"
-        "⏰ за годину до початку\n\n"
-        "Натисни кнопку внизу, щоб побачити найближчі матчі.",
-        reply_markup=main_keyboard,
-    )
-
-
-async def send_matches(message: Message):
-    await message.answer("Шукаю найближчі матчі...")
-    try:
-        matches = football_api.get_all_upcoming_matches(config.TEAM_IDS, days_ahead=14)
-    except Exception as e:
-        await message.answer(f"Не вдалося отримати дані з football-data.org: {e}")
-        return
-
-    if not matches:
-        await message.answer("Найближчим часом матчів не знайдено.")
-        return
-
-    text = "\n\n".join(_format_match(m) for m in matches[:10])
-    await message.answer(text)
-
-
-@dp.message(Command("matches"))
-async def cmd_matches(message: Message):
-    await send_matches(message)
-
-
-@dp.message(F.text == MATCHES_BUTTON_TEXT)
-async def button_matches(message: Message):
-    await send_matches(message)
-
-
-async def main():
+def main():
     db.init_db()
+    print("Бот запущено (локальний режим). Натисни Ctrl+C, щоб зупинити.")
 
-    scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
-    # перевіряємо матчі й надсилаємо нагадування кожні 5 хвилин
-    scheduler.add_job(check_and_send_reminders, "interval", minutes=5, args=[bot])
-    scheduler.start()
+    offset = None
+    last_reminder_check = 0
 
-    print("Бот запущено. Натисни Ctrl+C, щоб зупинити.")
-    await dp.start_polling(bot)
+    while True:
+        try:
+            updates = telegram_api.get_updates(offset=offset, timeout=20)
+            for update in updates:
+                offset = update["update_id"] + 1
+                handlers.handle_update(update)
+        except Exception as e:
+            print(f"[bot] Помилка при отриманні оновлень: {e}")
+            time.sleep(5)
+
+        now = time.time()
+        if now - last_reminder_check >= REMINDER_CHECK_INTERVAL_SECONDS:
+            reminders.check_and_send_reminders()
+            last_reminder_check = now
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -14,12 +14,17 @@ MORNING_REMINDER_MINUTE = int(os.getenv("MORNING_REMINDER_MINUTE", "0"))
 
 TIMEZONE = os.getenv("TIMEZONE", "Europe/Kyiv")
 
+# Секретна частина URL для webhook та /check-reminders, щоб сторонні не могли
+# смикати ці адреси. Придумай будь-який довгий випадковий рядок.
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+
 # Базова перевірка, щоб одразу було зрозуміло, чого не вистачає
 _missing = [
     name for name, value in [
         ("BOT_TOKEN", BOT_TOKEN),
         ("FOOTBALL_API_KEY", FOOTBALL_API_KEY),
         ("CHAT_ID", CHAT_ID),
+        ("WEBHOOK_SECRET", WEBHOOK_SECRET),
     ] if not value
 ]
 if _missing:
