@@ -1,9 +1,9 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import config
@@ -16,6 +16,13 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
+MATCHES_BUTTON_TEXT = "📅 Матчі"
+
+main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text=MATCHES_BUTTON_TEXT)]],
+    resize_keyboard=True,  # кнопка не займає весь екран
+)
+
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -23,12 +30,12 @@ async def cmd_start(message: Message):
         "Привіт! Я стежу за матчами твоїх команд і нагадую:\n"
         "☀️ вранці в день матчу\n"
         "⏰ за годину до початку\n\n"
-        "Команда /matches — показати найближчі матчі."
+        "Натисни кнопку внизу, щоб побачити найближчі матчі.",
+        reply_markup=main_keyboard,
     )
 
 
-@dp.message(Command("matches"))
-async def cmd_matches(message: Message):
+async def send_matches(message: Message):
     await message.answer("Шукаю найближчі матчі...")
     try:
         matches = football_api.get_all_upcoming_matches(config.TEAM_IDS, days_ahead=14)
@@ -42,6 +49,16 @@ async def cmd_matches(message: Message):
 
     text = "\n\n".join(_format_match(m) for m in matches[:10])
     await message.answer(text)
+
+
+@dp.message(Command("matches"))
+async def cmd_matches(message: Message):
+    await send_matches(message)
+
+
+@dp.message(F.text == MATCHES_BUTTON_TEXT)
+async def button_matches(message: Message):
+    await send_matches(message)
 
 
 async def main():
